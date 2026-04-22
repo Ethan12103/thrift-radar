@@ -1,0 +1,4 @@
+requests
+sqlalchemy
+python-dotenv
+pytest
