@@ -12,8 +12,7 @@ KEYWORDS = [
     "japanese denim",
     "selvedge",
     "workwear",
-    "military surplus",
-    ""
+    "military surplus"
 ]
 
 
