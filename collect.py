@@ -2,17 +2,18 @@ import os
 from dotenv import load_dotenv
 from db import init_db, Session, Listing
 from collectors.ebay import EbayCollector
+from collectors.grailed import GrailedCollector
 
 load_dotenv()
 
 # Target keywords to track
 KEYWORDS = [
-    "vintage",
-    "gorpcore",
-    "japanese denim",
-    "selvedge",
-    "workwear",
-    "military surplus"
+    "vintage"
+    #"gorpcore",
+    #"japanese denim",
+    #"selvedge",
+    #"workwear",
+    #"military surplus"
 ]
 
 
@@ -46,11 +47,41 @@ def collect_ebay(keywords):
     session.close()
 
 
+def collect_grailed(keywords):
+    collector = GrailedCollector()
+    session = Session()
+
+    for keyword in keywords:
+        print(f"[Grailed] Searching: '{keyword}'")
+        try:
+            listings = collector.search(keyword, limit=20)
+        except Exception as e:
+            print(f"  ERROR: {e}")
+            continue
+
+        new_count = 0
+        for item in listings:
+            exists = session.query(Listing).filter_by(
+                platform="grailed", listing_id=item["listing_id"]
+            ).first()
+            if exists:
+                continue
+
+            session.add(Listing(**item))
+            new_count += 1
+
+        session.commit()
+        print(f"  Saved {new_count} new listings.")
+
+    session.close()
+
+
 if __name__ == "__main__":
     print("Initializing database")
     init_db()
 
     print("Starting collection\n")
     collect_ebay(KEYWORDS)
+    collect_grailed(KEYWORDS)
 
     print("\nDone.")

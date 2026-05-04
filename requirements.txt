@@ -2,3 +2,5 @@ requests
 sqlalchemy
 python-dotenv
 pytest
+beautifulsoup4
+lxml
