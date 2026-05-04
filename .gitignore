@@ -1,0 +1,15 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+*.egg-info/
+
+# Environment and secrets
+.env
+
+# Database
+listings.db
+
+# macOS
+.DS_Store
