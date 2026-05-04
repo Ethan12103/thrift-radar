@@ -9,12 +9,22 @@ load_dotenv()
 
 # Target keywords to track
 KEYWORDS = [
-    "vintage"
-    #"gorpcore",
-    #"japanese denim",
-    #"selvedge",
-    #"workwear",
-    #"military surplus"
+    # Aesthetics / movements
+    "gorpcore",
+    "workwear",
+    "military surplus",
+    "y2k",
+    "archival",
+    "vintage",
+    "distressed",
+    "prep",
+    # Item types
+    "japanese denim",
+    "selvedge",
+    "fleece",
+    "hbt",
+    "overshirt",
+    "single stitch",
 ]
 
 
