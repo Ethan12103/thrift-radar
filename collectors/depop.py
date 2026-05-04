@@ -46,19 +46,29 @@ class DepopCollector:
             price_text = price_el.text.strip() if price_el else None
             price = self._parse_price(price_text)
 
-            # Derive title from slug
-            title = self._slug_to_title(slug)
+            # Card <p> order: brand, size, price
+            non_price_ps = [p for p in card.find_all("p") if not p.get("aria-description")]
+            brand = non_price_ps[0].text.strip() if len(non_price_ps) > 0 else None
+            size = non_price_ps[1].text.strip() if len(non_price_ps) > 1 else None
 
             results.append({
                 "platform": "depop",
                 "listing_id": slug,
-                "title": title,
+                "url": f"{DEPOP_BASE}/products/{slug}/",
+                "title": self._slug_to_title(slug),
+                "description": None,
+                "brand": brand,
+                "category": None,
+                "department": None,
+                "condition": None,
+                "size": size,
+                "color": None,
                 "price": price,
                 "currency": "USD",
-                "category": None,
-                "condition": None,
-                "url": f"{DEPOP_BASE}/products/{slug}/",
-                "collected_at": datetime.now(timezone.utc),
+                "likes": None,
+                "heat": None,
+                "listing_created_at": None,
+                "location": None,
             })
 
         return results
@@ -73,10 +83,8 @@ class DepopCollector:
             return None
 
     def _slug_to_title(self, slug):
-        # Strip leading username (up to first '-') and trailing hash (last 4-char segment)
+        # Strip leading username (before first '-') and trailing hash (last short segment)
         parts = slug.split("-")
-        # Username is the first segment
-        # Hash is a short alphanumeric suffix at the end
         if len(parts) > 2:
             parts = parts[1:-1]
         return " ".join(parts).title()

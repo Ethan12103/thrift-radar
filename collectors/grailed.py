@@ -43,16 +43,31 @@ class GrailedCollector:
 
     def _normalize(self, hit):
         """Map a raw Algolia hit to our standard listing schema."""
-        price_i = hit.get("price_i")  # integer price in cents
+        price_i = hit.get("price_i")  # integer cents
+
+        created_raw = hit.get("created_at")
+        try:
+            from datetime import datetime as dt
+            listing_created_at = dt.fromisoformat(created_raw.replace("Z", "+00:00")) if created_raw else None
+        except (ValueError, AttributeError):
+            listing_created_at = None
 
         return {
             "platform": "grailed",
             "listing_id": str(hit.get("id", hit.get("objectID", ""))),
-            "title": hit.get("title"),
-            "price": price_i / 100 if price_i is not None else None,
-            "currency": "USD",
-            "category": hit.get("designer_names"),
-            "condition": hit.get("condition"),
             "url": f"{GRAILED_BASE}/listings/{hit.get('id')}",
-            "collected_at": datetime.now(timezone.utc),
+            "title": hit.get("title"),
+            "description": None,                        # not included in Algolia index
+            "brand": hit.get("designer_names"),
+            "category": hit.get("category_path"),       # ex. "menswear.tops.t_shirts"
+            "department": hit.get("department"),        # ex. "menswear"
+            "condition": hit.get("condition"),
+            "size": hit.get("size"),
+            "color": hit.get("color"),
+            "price": price_i if price_i is not None else None,
+            "currency": "USD",
+            "likes": None,                              # not in Algolia response
+            "heat": hit.get("heat_f"),                  # engagement score
+            "listing_created_at": listing_created_at,
+            "location": hit.get("location"),
         }
