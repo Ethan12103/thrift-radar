@@ -4,3 +4,4 @@ python-dotenv
 pytest
 beautifulsoup4
 lxml
+nltk
