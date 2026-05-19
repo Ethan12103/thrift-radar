@@ -1,4 +1,5 @@
 import os
+from datetime import datetime, timezone
 from dotenv import load_dotenv
 from db import init_db, Session, Listing
 from collectors.ebay import EbayCollector
@@ -58,7 +59,7 @@ def collect_ebay(keywords):
     session.close()
 
 
-def collect_grailed(keywords):
+def collect_grailed(keywords, run_time):
     collector = GrailedCollector()
     session = Session()
 
@@ -78,6 +79,7 @@ def collect_grailed(keywords):
             if exists:
                 continue
 
+            item["collected_at"] = run_time
             session.add(Listing(**item))
             new_count += 1
 
@@ -87,7 +89,7 @@ def collect_grailed(keywords):
     session.close()
 
 
-def collect_depop(keywords):
+def collect_depop(keywords, run_time):
     collector = DepopCollector()
     session = Session()
 
@@ -107,6 +109,7 @@ def collect_depop(keywords):
             if exists:
                 continue
 
+            item["collected_at"] = run_time
             session.add(Listing(**item))
             new_count += 1
 
@@ -120,9 +123,10 @@ if __name__ == "__main__":
     print("Initializing database")
     init_db()
 
-    print("Starting collection\n")
+    run_time = datetime.now(timezone.utc)
+    print(f"Starting collection (run_time={run_time.isoformat()})\n")
     collect_ebay(KEYWORDS)
-    collect_grailed(KEYWORDS)
-    collect_depop(KEYWORDS)
+    collect_grailed(KEYWORDS, run_time)
+    collect_depop(KEYWORDS, run_time)
 
     print("\nDone.")
