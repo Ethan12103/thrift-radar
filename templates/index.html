@@ -1,0 +1,264 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Thrift Radar</title>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: system-ui, sans-serif; background: #f4f4f6; color: #222; padding: 24px; }
+    header {
+      display: flex; align-items: center; gap: 16px;
+      margin-bottom: 28px; padding-bottom: 16px;
+      border-bottom: 2px solid #e0e0e0;
+    }
+    h1 { font-size: 1.6rem; font-weight: 700; letter-spacing: -0.5px; }
+    h1 span { color: #6366f1; }
+    h2 { font-size: 1rem; font-weight: 600; margin-bottom: 14px; color: #444; text-transform: uppercase; letter-spacing: 0.5px; }
+    .subtitle { font-size: 0.8rem; color: #888; font-weight: 400; margin-left: 8px; text-transform: none; letter-spacing: 0; }
+    section {
+      background: #fff; border-radius: 10px; padding: 22px 24px;
+      margin-bottom: 22px; box-shadow: 0 1px 4px rgba(0,0,0,.07);
+    }
+    canvas { max-height: 380px; }
+    table { width: 100%; border-collapse: collapse; margin-top: 18px; font-size: 0.82rem; }
+    th, td { text-align: left; padding: 7px 10px; border-bottom: 1px solid #f0f0f0; }
+    th { font-weight: 600; background: #f8f8f8; color: #555; font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.4px; }
+    td.num { text-align: right; font-variant-numeric: tabular-nums; }
+    .badge {
+      display: inline-block; padding: 2px 7px; border-radius: 12px;
+      font-size: 0.72rem; font-weight: 600;
+    }
+    .badge-green { background: #d1fae5; color: #065f46; }
+    .badge-orange { background: #fef3c7; color: #92400e; }
+    select {
+      padding: 6px 12px; border: 1px solid #d0d0d0; border-radius: 6px;
+      font-size: 0.85rem; cursor: pointer; background: #fff;
+    }
+    .empty-msg { color: #888; font-size: 0.85rem; padding: 12px 0; }
+  </style>
+</head>
+<body>
+
+<header>
+  <h1>Thrift <span>Radar</span></h1>
+  <select id="platform-select">
+    <option value="all">All Platforms</option>
+    <option value="grailed">Grailed</option>
+    <option value="depop">Depop</option>
+  </select>
+</header>
+
+<!-- Section 1: Top Keywords -->
+<section>
+  <h2>Top Keywords <span class="subtitle">by total listing frequency</span></h2>
+  <canvas id="kw-chart"></canvas>
+  <p id="kw-empty" class="empty-msg" style="display:none">No keyword data available.</p>
+</section>
+
+<!-- Section 2: Momentum Scores -->
+<section>
+  <h2>Momentum Scores <span class="subtitle">keywords accelerating vs. baseline (score &gt; 1 = rising)</span></h2>
+  <canvas id="mom-chart"></canvas>
+  <p id="mom-empty" class="empty-msg" style="display:none">Need at least 2 collection runs to compute momentum.</p>
+  <table id="mom-table" style="display:none">
+    <thead>
+      <tr>
+        <th>Keyword</th>
+        <th class="num">Score</th>
+        <th class="num">Freq Mom.</th>
+        <th class="num">Heat Mom.</th>
+        <th class="num">Count</th>
+      </tr>
+    </thead>
+    <tbody id="mom-tbody"></tbody>
+  </table>
+</section>
+
+<!-- Section 3: New Keywords -->
+<section>
+  <h2>New Keywords <span class="subtitle">appearing now, not seen in baseline</span></h2>
+  <p id="new-empty" class="empty-msg" style="display:none">No new keywords detected.</p>
+  <table id="new-table" style="display:none">
+    <thead>
+      <tr>
+        <th>Keyword</th>
+        <th class="num">Recent Count</th>
+      </tr>
+    </thead>
+    <tbody id="new-tbody"></tbody>
+  </table>
+</section>
+
+<script>
+  // --- Initial data from Flask/Jinja2 ---
+  const initialKw  = {{ kw_data | tojson }};
+  const initialMom = {{ mom_data | tojson }};
+  const initialNew = {{ new_data | tojson }};
+  const initialPlatform = {{ platform | tojson }};
+
+  let kwChart = null;
+  let momChart = null;
+
+  // ---- Chart builders ----
+
+  function buildKwChart(labels, values) {
+    const canvas = document.getElementById("kw-chart");
+    const empty  = document.getElementById("kw-empty");
+    if (!labels.length) {
+      canvas.style.display = "none";
+      empty.style.display  = "";
+      return;
+    }
+    canvas.style.display = "";
+    empty.style.display  = "none";
+    kwChart = new Chart(canvas.getContext("2d"), {
+      type: "bar",
+      data: {
+        labels,
+        datasets: [{
+          label: "Count",
+          data: values,
+          backgroundColor: "rgba(99, 102, 241, 0.75)",
+          borderRadius: 3,
+        }]
+      },
+      options: {
+        indexAxis: "y",
+        responsive: true,
+        plugins: { legend: { display: false } },
+        scales: {
+          x: { beginAtZero: true, grid: { color: "#f0f0f0" } },
+          y: { ticks: { font: { size: 11 } } }
+        }
+      }
+    });
+  }
+
+  function buildMomChart(labels, scores) {
+    const canvas = document.getElementById("mom-chart");
+    const empty  = document.getElementById("mom-empty");
+    const table  = document.getElementById("mom-table");
+    if (!labels.length) {
+      canvas.style.display = "none";
+      table.style.display  = "none";
+      empty.style.display  = "";
+      return;
+    }
+    canvas.style.display = "";
+    empty.style.display  = "none";
+    momChart = new Chart(canvas.getContext("2d"), {
+      type: "bar",
+      data: {
+        labels,
+        datasets: [{
+          label: "Momentum Score",
+          data: scores,
+          backgroundColor: scores.map(s =>
+            s >= 2 ? "rgba(245, 158, 11, 0.85)" : "rgba(251, 207, 130, 0.75)"
+          ),
+          borderRadius: 3,
+        }]
+      },
+      options: {
+        indexAxis: "y",
+        responsive: true,
+        plugins: { legend: { display: false } },
+        scales: {
+          x: { beginAtZero: true, grid: { color: "#f0f0f0" } },
+          y: { ticks: { font: { size: 11 } } }
+        }
+      }
+    });
+  }
+
+  function buildMomTable(data) {
+    const tbody = document.getElementById("mom-tbody");
+    const table = document.getElementById("mom-table");
+    tbody.innerHTML = "";
+    if (!data.labels || !data.labels.length) { table.style.display = "none"; return; }
+    table.style.display = "";
+    const labels = data.labels || data.map(d => d.keyword);
+    const scores        = data.scores        || data.map(d => d.score);
+    const freqMom       = data.freq_momentum || data.map(d => d.freq_momentum);
+    const heatMom       = data.heat_momentum || data.map(d => d.heat_momentum);
+    const counts        = data.recent_count  || data.map(d => d.recent_count);
+    labels.forEach((kw, i) => {
+      const score = scores[i];
+      const badge = score >= 2
+        ? `<span class="badge badge-orange">${score.toFixed(2)}</span>`
+        : `<span class="badge badge-green">${score.toFixed(2)}</span>`;
+      tbody.insertAdjacentHTML("beforeend", `
+        <tr>
+          <td>${kw}</td>
+          <td class="num">${badge}</td>
+          <td class="num">${freqMom[i].toFixed(2)}</td>
+          <td class="num">${heatMom[i].toFixed(2)}</td>
+          <td class="num">${counts[i]}</td>
+        </tr>`);
+    });
+  }
+
+  function buildNewTable(data) {
+    const tbody = document.getElementById("new-tbody");
+    const table = document.getElementById("new-table");
+    const empty = document.getElementById("new-empty");
+    tbody.innerHTML = "";
+    if (!data.length) {
+      table.style.display = "none";
+      empty.style.display = "";
+      return;
+    }
+    table.style.display = "";
+    empty.style.display = "none";
+    data.forEach(row => {
+      tbody.insertAdjacentHTML("beforeend", `
+        <tr>
+          <td>${row.keyword}</td>
+          <td class="num">${row.recent_count}</td>
+        </tr>`);
+    });
+  }
+
+  // ---- Initial render using server-side data ----
+
+  buildKwChart(initialKw.map(r => r[0]), initialKw.map(r => r[1]));
+  // initialMom is a list of dicts
+  const initMomNorm = {
+    labels:        initialMom.map(d => d.keyword),
+    scores:        initialMom.map(d => d.score),
+    freq_momentum: initialMom.map(d => d.freq_momentum),
+    heat_momentum: initialMom.map(d => d.heat_momentum),
+    recent_count:  initialMom.map(d => d.recent_count),
+  };
+  buildMomChart(initMomNorm.labels, initMomNorm.scores);
+  buildMomTable(initMomNorm);
+  buildNewTable(initialNew);
+
+  // Pre-select dropdown to match server-rendered platform
+  document.getElementById("platform-select").value = initialPlatform;
+
+  // ---- Platform filter (live reload via JSON API) ----
+
+  document.getElementById("platform-select").addEventListener("change", async (e) => {
+    const platform = e.target.value;
+    const qs = platform === "all" ? "" : `?platform=${platform}`;
+
+    const [kwRes, momRes, newRes] = await Promise.all([
+      fetch(`/api/top-keywords${qs}`).then(r => r.json()),
+      fetch(`/api/momentum${qs}`).then(r => r.json()),
+      fetch(`/api/new-keywords${qs}`).then(r => r.json()),
+    ]);
+
+    if (kwChart)  { kwChart.destroy();  kwChart  = null; }
+    if (momChart) { momChart.destroy(); momChart = null; }
+
+    buildKwChart(kwRes.labels, kwRes.values);
+    buildMomChart(momRes.labels, momRes.scores);
+    buildMomTable(momRes);
+    buildNewTable(newRes);
+  });
+</script>
+</body>
+</html>

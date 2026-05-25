@@ -5,3 +5,4 @@ pytest
 beautifulsoup4
 lxml
 nltk
+flask
