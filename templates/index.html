@@ -37,9 +37,21 @@
       font-size: 0.85rem; cursor: pointer; background: #fff;
     }
     .empty-msg { color: #888; font-size: 0.85rem; padding: 12px 0; }
+    nav { display: flex; gap: 8px; margin-bottom: 20px; }
+    .nav-link {
+      padding: 6px 14px; border-radius: 6px; text-decoration: none;
+      font-size: 0.85rem; font-weight: 500; color: #555;
+      background: #fff; border: 1px solid #e0e0e0;
+    }
+    .nav-link.active { background: #6366f1; color: #fff; border-color: #6366f1; }
   </style>
 </head>
 <body>
+
+<nav>
+  <a href="/" class="nav-link active">Dashboard</a>
+  <a href="/clusters" class="nav-link">Trend Clusters</a>
+</nav>
 
 <header>
   <h1>Thrift <span>Radar</span></h1>
