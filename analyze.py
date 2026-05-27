@@ -34,6 +34,12 @@ STOPWORDS = set(stopwords.words("english")) | {
     "pile", "fade", "faded",
     # Japanese store/location words that slip through brand names
     "zai", "aoyama", "shibuya", "harajuku",
+    # Generic clothing categories
+    "shirt", "jacket", "coat", "pant", "jean", "tee",
+    "sweater", "sweatshirt", "hoodie", "vest", "short",
+    "shoe", "boot", "sneaker", "hat", "cap", "sock",
+    "trouser", "blazer", "dress", "skirt", "blouse",
+    "top", "bottom", "cloth", "clothing", "apparel", "outfit",
 }
 
 # Multi-word fashion terms to preserve as single tokens
