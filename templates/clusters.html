@@ -1,0 +1,322 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Thrift Radar — Trend Clusters</title>
+  <script src="https://cdn.jsdelivr.net/npm/d3@7/dist/d3.min.js"></script>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: system-ui, sans-serif; background: #f4f4f6; color: #222; padding: 24px; }
+
+    nav { display: flex; gap: 8px; margin-bottom: 20px; }
+    .nav-link {
+      padding: 6px 14px; border-radius: 6px; text-decoration: none;
+      font-size: 0.85rem; font-weight: 500; color: #555;
+      background: #fff; border: 1px solid #e0e0e0;
+    }
+    .nav-link.active { background: #6366f1; color: #fff; border-color: #6366f1; }
+
+    header { display: flex; align-items: center; gap: 16px; margin-bottom: 20px; }
+    h1 { font-size: 1.6rem; font-weight: 700; letter-spacing: -0.5px; }
+    h1 span { color: #6366f1; }
+
+    select {
+      padding: 6px 12px; border: 1px solid #d0d0d0; border-radius: 6px;
+      font-size: 0.85rem; cursor: pointer; background: #fff;
+    }
+
+    #viz-container {
+      background: #fff; border-radius: 10px;
+      box-shadow: 0 1px 4px rgba(0,0,0,.07);
+      overflow: hidden;
+    }
+
+    #viz { display: block; width: 100%; }
+
+    #size-note {
+      font-size: 0.72rem; color: #aaa; text-align: center;
+      padding: 8px 20px 10px;
+      border-top: 1px solid #f4f4f4;
+    }
+
+    #legend {
+      display: flex; flex-wrap: wrap; gap: 10px;
+      padding: 12px 20px 16px;
+      border-top: 1px solid #f0f0f0;
+    }
+    .legend-item {
+      display: flex; align-items: center; gap: 6px;
+      font-size: 0.78rem; color: #555;
+    }
+    .legend-dot {
+      width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0;
+    }
+
+    #tooltip {
+      position: fixed; display: none; z-index: 100;
+      background: #fff; border: 1px solid #e0e0e0;
+      border-radius: 8px; padding: 10px 13px;
+      font-size: 0.8rem; line-height: 1.7;
+      box-shadow: 0 4px 16px rgba(0,0,0,.12);
+      pointer-events: none; max-width: 210px;
+    }
+    #tooltip strong { font-size: 0.9rem; display: block; margin-bottom: 3px; }
+    #tooltip .cluster-tag {
+      display: inline-block; font-size: 0.68rem; padding: 1px 7px;
+      border-radius: 10px; margin-bottom: 5px; color: #fff; font-weight: 600;
+    }
+
+    #empty-msg {
+      background: #fff; border-radius: 10px; padding: 48px;
+      text-align: center; color: #888; font-size: 0.9rem;
+      box-shadow: 0 1px 4px rgba(0,0,0,.07);
+    }
+  </style>
+</head>
+<body>
+
+<nav>
+  <a href="/" class="nav-link">Dashboard</a>
+  <a href="/clusters" class="nav-link active">Trend Clusters</a>
+</nav>
+
+<header>
+  <h1>Thrift <span>Radar</span></h1>
+  <select id="platform-select">
+    <option value="all">All Platforms</option>
+    <option value="grailed">Grailed</option>
+    <option value="depop">Depop</option>
+  </select>
+</header>
+
+<div id="viz-container">
+  <svg id="viz"></svg>
+  <p id="size-note">Circle size = momentum score &nbsp;·&nbsp; Drag to reposition &nbsp;·&nbsp; Scroll to zoom &nbsp;·&nbsp; Hover for details</p>
+  <div id="legend"></div>
+</div>
+<div id="empty-msg" style="display:none">Need at least 2 collection runs to compute momentum scores.</div>
+
+<div id="tooltip"></div>
+
+<script>
+  const CLUSTER_COLORS = [
+    "#6366f1", "#f59e0b", "#10b981", "#ef4444",
+    "#8b5cf6", "#06b6d4", "#f97316", "#84cc16", "#ec4899",
+  ];
+
+  const initialData     = {{ mom_data | tojson }};
+  const initialPlatform = {{ platform | tojson }};
+
+  document.getElementById("platform-select").value = initialPlatform;
+
+  if (!initialData.length) {
+    document.getElementById("viz-container").style.display = "none";
+    document.getElementById("empty-msg").style.display = "";
+  } else {
+    renderViz(initialData);
+  }
+
+  function renderViz(data) {
+    // --- Reset ---
+    d3.select("#viz").selectAll("*").remove();
+    document.getElementById("legend").innerHTML = "";
+
+    const container = document.getElementById("viz-container");
+    const W = container.clientWidth || 900;
+    const H = 560;
+
+    const svg = d3.select("#viz")
+      .attr("viewBox", `0 0 ${W} ${H}`)
+      .attr("height", H);
+
+    // Zoomable group
+    const g = svg.append("g");
+    svg.call(
+      d3.zoom().scaleExtent([0.35, 3.5])
+        .on("zoom", (event) => g.attr("transform", event.transform))
+    );
+
+    // --- Scales ---
+    const clusters = [...new Set(data.map(d => d.cluster))].sort();
+    const colorScale = d3.scaleOrdinal().domain(clusters).range(CLUSTER_COLORS);
+
+    const maxScore = d3.max(data, d => d.score) || 1;
+    const rScale = d3.scaleSqrt().domain([0, maxScore]).range([13, 52]);
+
+    // --- Cluster centroids arranged evenly on a circle ---
+    const clusterCenters = {};
+    clusters.forEach((c, i) => {
+      const angle = (i / clusters.length) * 2 * Math.PI - Math.PI / 2;
+      const r = Math.min(W, H) * 0.27;
+      clusterCenters[c] = {
+        x: W / 2 + r * Math.cos(angle),
+        y: H / 2 + r * Math.sin(angle),
+      };
+    });
+
+    // --- Links: hub-and-spoke per cluster (hub = highest-score node) ---
+    const nodesByCluster = new Map();
+    data.forEach(d => {
+      if (!nodesByCluster.has(d.cluster)) nodesByCluster.set(d.cluster, []);
+      nodesByCluster.get(d.cluster).push(d);
+    });
+
+    const links = [];
+    nodesByCluster.forEach((nodes, cluster) => {
+      if (nodes.length < 2) return;
+      const hub = nodes.reduce((a, b) => a.score > b.score ? a : b);
+      nodes.forEach(n => {
+        if (n !== hub) links.push({ source: n.keyword, target: hub.keyword, cluster });
+      });
+    });
+
+    // --- Seed initial positions near cluster centers ---
+    data.forEach(d => {
+      const c = clusterCenters[d.cluster];
+      d.x = c.x + (Math.random() - 0.5) * 100;
+      d.y = c.y + (Math.random() - 0.5) * 100;
+    });
+
+    // --- Force simulation ---
+    const simulation = d3.forceSimulation(data)
+      .force("link", d3.forceLink(links)
+        .id(d => d.keyword)
+        .distance(d => rScale(d.source.score || 1) + rScale(d.target.score || 1) + 14)
+        .strength(0.25))
+      .force("charge", d3.forceManyBody().strength(-70))
+      .force("collision", d3.forceCollide(d => rScale(d.score) + 7))
+      .force("cluster", function(alpha) {
+        data.forEach(d => {
+          const c = clusterCenters[d.cluster];
+          d.vx += (c.x - d.x) * 0.06 * alpha;
+          d.vy += (c.y - d.y) * 0.06 * alpha;
+        });
+      });
+
+    // --- Draw links ---
+    const linkSel = g.append("g")
+      .selectAll("line")
+      .data(links)
+      .join("line")
+      .attr("stroke", d => colorScale(d.cluster))
+      .attr("stroke-opacity", 0.22)
+      .attr("stroke-width", 1.5);
+
+    // --- Draw nodes ---
+    const nodeSel = g.append("g")
+      .selectAll("g")
+      .data(data)
+      .join("g")
+      .style("cursor", "grab")
+      .call(
+        d3.drag()
+          .on("start", (event, d) => {
+            if (!event.active) simulation.alphaTarget(0.3).restart();
+            d.fx = d.x; d.fy = d.y;
+          })
+          .on("drag", (event, d) => { d.fx = event.x; d.fy = event.y; })
+          .on("end", (event, d) => {
+            if (!event.active) simulation.alphaTarget(0);
+            d.fx = null; d.fy = null;
+          })
+      );
+
+    nodeSel.append("circle")
+      .attr("r", d => rScale(d.score))
+      .attr("fill", d => colorScale(d.cluster))
+      .attr("fill-opacity", 0.85)
+      .attr("stroke", "#fff")
+      .attr("stroke-width", 2.5);
+
+    nodeSel.append("text")
+      .text(d => {
+        const r = rScale(d.score);
+        if (r < 18) return "";
+        const label = d.keyword.replace(/^brand:/, "").replace(/_/g, " ");
+        const maxChars = Math.floor(r / 3.4);
+        return label.length > maxChars ? label.slice(0, maxChars) + "…" : label;
+      })
+      .attr("text-anchor", "middle")
+      .attr("dy", "0.35em")
+      .attr("font-size", d => Math.max(Math.min(rScale(d.score) * 0.33, 11), 7.5))
+      .attr("fill", "#fff")
+      .attr("font-weight", "600")
+      .attr("pointer-events", "none");
+
+    // --- Cluster labels ---
+    g.append("g")
+      .selectAll("text")
+      .data(clusters)
+      .join("text")
+      .attr("x", c => clusterCenters[c].x)
+      .attr("y", c => clusterCenters[c].y)
+      .attr("text-anchor", "middle")
+      .attr("font-size", 10)
+      .attr("font-weight", "700")
+      .attr("fill", c => colorScale(c))
+      .attr("opacity", 0.35)
+      .attr("pointer-events", "none")
+      .text(c => c.toUpperCase());
+
+    // --- Tooltip ---
+    const tooltip = d3.select("#tooltip");
+
+    nodeSel
+      .on("mouseover", (event, d) => {
+        const clr = colorScale(d.cluster);
+        tooltip.style("display", "block").html(`
+          <strong>${d.keyword.replace(/^brand:/, "").replace(/_/g, " ")}</strong>
+          <span class="cluster-tag" style="background:${clr}">${d.cluster}</span>
+          Score: <b>${d.score}</b><br/>
+          Freq momentum: ${d.freq_momentum}<br/>
+          Heat momentum: ${d.heat_momentum}<br/>
+          Recent count: ${d.recent_count}
+        `);
+      })
+      .on("mousemove", (event) => {
+        tooltip
+          .style("left", (event.clientX + 16) + "px")
+          .style("top",  (event.clientY - 14) + "px");
+      })
+      .on("mouseout", () => tooltip.style("display", "none"));
+
+    // --- Tick ---
+    simulation.on("tick", () => {
+      linkSel
+        .attr("x1", d => d.source.x)
+        .attr("y1", d => d.source.y)
+        .attr("x2", d => d.target.x)
+        .attr("y2", d => d.target.y);
+
+      nodeSel.attr("transform", d => `translate(${d.x},${d.y})`);
+    });
+
+    // --- Legend ---
+    const legendEl = document.getElementById("legend");
+    clusters.forEach(c => {
+      const item = document.createElement("div");
+      item.className = "legend-item";
+      item.innerHTML = `<span class="legend-dot" style="background:${colorScale(c)}"></span>${c}`;
+      legendEl.appendChild(item);
+    });
+  }
+
+  // --- Platform filter ---
+  document.getElementById("platform-select").addEventListener("change", async (e) => {
+    const platform = e.target.value;
+    const qs = platform === "all" ? "" : `?platform=${platform}`;
+    const data = await fetch(`/api/clusters${qs}`).then(r => r.json());
+
+    if (!data.length) {
+      document.getElementById("viz-container").style.display = "none";
+      document.getElementById("empty-msg").style.display = "";
+    } else {
+      document.getElementById("viz-container").style.display = "";
+      document.getElementById("empty-msg").style.display = "none";
+      renderViz(data);
+    }
+  });
+</script>
+</body>
+</html>
