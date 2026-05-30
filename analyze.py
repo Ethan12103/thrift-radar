@@ -19,7 +19,7 @@ lemmatizer = WordNetLemmatizer()
 STOPWORDS = set(stopwords.words("english")) | {
     # Sizes
     "xs", "s", "m", "l", "xl", "xxl", "xxxl", "2xl", "3xl", "xsmall",
-    "small", "medium", "large", "xlarge", "petite", "plus",
+    "small", "medium", "large", "xlarge", "petite", "plus", "30x32",
     # Listing noise
     "new", "nwt", "nwot", "nwob", "nos", "used", "good", "great",
     "excellent", "perfect", "nice", "lot", "bundle",
@@ -40,6 +40,8 @@ STOPWORDS = set(stopwords.words("english")) | {
     "shoe", "boot", "sneaker", "hat", "cap", "sock",
     "trouser", "blazer", "dress", "skirt", "blouse",
     "top", "bottom", "cloth", "clothing", "apparel", "outfit",
+    # Generic colors
+    "black", "white",
 }
 
 # Multi-word fashion terms to preserve as single tokens
